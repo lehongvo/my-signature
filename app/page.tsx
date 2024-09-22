@@ -137,7 +137,7 @@ export default function Home() {
 
       const isValidIpfsLink = await verifyIpfsLink(newUrlMetadata);
       if (!isValidIpfsLink) {
-        throw new Error("Invalid IPFS link");
+        throw new Error("Invalid IPFS link or metadata");
       }
 
       if (Number(tokenId) <= 0) {
