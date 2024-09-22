@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import Modal from "react-modal";
+import axios from "axios";
 
 // global.d.ts (assumed to be already created and correctly typed)
 
@@ -17,51 +18,53 @@ export default function Home() {
   }, []);
 
   const chainID = 10081;
-  // const RPC_URL = "https://rpc-1.testnet.japanopenchain.org:8545";
+  const RPC_URL = "https://rpc-1.testnet.japanopenchain.org:8545";
   const NFT_CONTRACT_ADDRESS = "0x4950B69979942C235e5b576826Eedb77eaf6ff00";
 
   // Remove unused variable if you're not using this function
-  // const switchToCorrectNetwork = async (): Promise<void> => {
-  //   const chainIDHex = ethers.utils.hexValue(chainID);
+  const switchToCorrectNetwork = async (provider: any): Promise<void> => {
+    const networkData = await provider.getNetwork();
+    const chainIDHex = ethers.utils.hexValue(chainID);
 
-  //   // Check if MetaMask (or any Ethereum provider) is available
-  //   if (typeof window !== "undefined" && window.ethereum) {
-  //     try {
-  //       await window.ethereum?.request?.({
-  //         method: 'wallet_switchEthereumChain',
-  //         params: [{ chainId: chainIDHex }],
-  //       });
-  //     } catch (switchError: unknown) {
-  //       if (typeof switchError === "object" && switchError !== null && "code" in switchError && (switchError as any).code === 4902) {
-  //         try {
-  //           await window.ethereum?.request?.({
-  //             method: 'wallet_addEthereumChain',
-  //             params: [
-  //               {
-  //                 chainId: chainIDHex,
-  //                 chainName: 'Japan Open Chain Testnet',
-  //                 rpcUrls: [RPC_URL],
-  //                 nativeCurrency: {
-  //                   name: 'JOY',
-  //                   symbol: 'JOY',
-  //                   decimals: 18,
-  //                 },
-  //                 blockExplorerUrls: ['https://explorer.testnet.japanopenchain.org/'],
-  //               },
-  //             ],
-  //           });
-  //         } catch (addError: unknown) {
-  //           console.error("Failed to add network:", addError);
-  //           throw addError;
-  //         }
-  //       } else {
-  //         throw switchError;
-  //       }
-  //     }
-  //   } else {
-  //     alert("MetaMask is not installed. Please install MetaMask to continue.");
-  //   }
-  // };
+    if (Number(networkData.chainId) != Number(chainIDHex)) {
+      if (typeof window !== "undefined" && window.ethereum) {
+        try {
+          await window.ethereum?.request?.({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: chainIDHex }],
+          });
+        } catch (switchError: unknown) {
+          if (typeof switchError === "object" && switchError !== null && "code" in switchError && (switchError as any).code === 4902) {
+            try {
+              await window.ethereum?.request?.({
+                method: 'wallet_addEthereumChain',
+                params: [
+                  {
+                    chainId: chainIDHex,
+                    chainName: 'Japan Open Chain Testnet',
+                    rpcUrls: [RPC_URL],
+                    nativeCurrency: {
+                      name: 'JOY',
+                      symbol: 'JOY',
+                      decimals: 18,
+                    },
+                    blockExplorerUrls: ['https://explorer.testnet.japanopenchain.org/'],
+                  },
+                ],
+              });
+            } catch (addError: unknown) {
+              console.error("Failed to add network:", addError);
+              throw addError;
+            }
+          } else {
+            throw switchError;
+          }
+        }
+      } else {
+        alert("MetaMask is not installed. Please install MetaMask to continue.");
+      }
+    }
+  };
 
   const [tokenId, setTokenId] = useState("");
   const [newUrlMetadata, setNewUrlMetadata] = useState("");
@@ -71,8 +74,86 @@ export default function Home() {
   const [nonce, setNonce] = useState("");
   const [deadline, setDeadline] = useState("");
 
+  const convertToMetadata = (url: string) => {
+    const metadata = url.replace('ipfs://', 'https://ipfs.io/ipfs/');
+    return metadata;
+  }
+
+  const verifyIpfsLink = async (urlMetadata: string): Promise<boolean> => {
+    try {
+      if (!urlMetadata.startsWith('ipfs://')) {
+        throw new Error('Invalid IPFS URL');
+      }
+
+      const ipfsGatewayUrl = convertToMetadata(urlMetadata);
+
+      const response = await axios.get(ipfsGatewayUrl);
+
+      if (response.status === 200 && response.data) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (error) {
+      throw new Error('Invalid IPFS link');
+    }
+  };
+
+
+  const handleUpdateSignature = async (): Promise<void> => {
+    try {
+      if (typeof window.ethereum === 'undefined') {
+        throw new Error("MetaMask is not installed!");
+      }
+
+      if (!verifyIpfsLink(newUrlMetadata)) {
+        throw new Error("Invalid IPFS link");
+      }
+
+      if (window.ethereum) {
+        await window.ethereum.request?.({ method: 'eth_requestAccounts' });
+      }
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+      const nonce = await provider.getTransactionCount(address);
+
+      await switchToCorrectNetwork(provider);
+
+      const messageHash = ethers.utils.solidityKeccak256(
+        ["address", "uint256", "address", "uint32", "string"],
+        [address, tokenId, NFT_CONTRACT_ADDRESS, nonce, newUrlMetadata]
+      );
+      const sigHashBytes = ethers.utils.arrayify(messageHash);
+      const signingMessage = ethers.utils.hexlify(sigHashBytes);
+      const signature = await signer.signMessage(signingMessage);
+      alert(`Signature: ${signature}`);
+    } catch (error: any) {
+      console.error("Error updating metadata:", error);
+      alert("Error updating metadata. Please check the console for more details.");
+    }
+  };
+
   const handlePermitSubmit = async (): Promise<void> => {
     try {
+      if (typeof window.ethereum === 'undefined') {
+        throw new Error("MetaMask is not installed!");
+      }
+
+      if (ethers.utils.isAddress(owner) === false || ethers.utils.isAddress(spender) === false) {
+        throw new Error("Invalid address!");
+      }
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+      const nonce = await provider.getTransactionCount(address);
+
+      if (owner.toLowerCase() !== spender.toLowerCase()) {
+        throw new Error("Owner and spender must be the same!");
+      }
+
       const domain = {
         name: "My Token",
         version: "1",
@@ -80,13 +161,17 @@ export default function Home() {
         verifyingContract: NFT_CONTRACT_ADDRESS,
       };
 
+      const expTenDay: number = Math.floor(Date.now() / 1000) + 10 * 24 * 60 * 60;
+
       const message = {
         owner,
         spender,
         value: ethers.utils.parseUnits(value, 18),
-        nonce: parseInt(nonce),
-        deadline: parseInt(deadline),
+        nonce: Number(nonce),
+        deadline: (Math.ceil(expTenDay) + deadline).toString(),
       };
+
+      console.log("Message:", message);
 
       const types = {
         Permit: [
@@ -97,13 +182,6 @@ export default function Home() {
           { name: "deadline", type: "uint256" },
         ],
       };
-
-      if (typeof window.ethereum === 'undefined') {
-        throw new Error("MetaMask is not installed!");
-      }
-
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
 
       const signature = await signer._signTypedData(domain, types, message);
 
@@ -143,7 +221,7 @@ export default function Home() {
         </div>
         <button
           className="px-4 py-2 mt-4 text-white bg-blue-500 rounded-md hover:bg-blue-600"
-          onClick={handlePermitSubmit}
+          onClick={handleUpdateSignature}
         >
           Get Signature Update Metadata
         </button>
