@@ -255,7 +255,7 @@ export default function Home() {
             className="w-full p-4 text-lg border border-gray-300 rounded-md focus:border-blue-500 focus:ring focus:ring-blue-200 text-black placeholder-gray-700"
             placeholder="Enter Token ID"
             value={tokenId}
-            onChange={(e) => setTokenId(e.target.value)}
+            onChange={(e) => setTokenId(Number(e.target.value))}
           />
         </div>
         <div className="mb-6 w-full">
