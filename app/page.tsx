@@ -95,7 +95,7 @@ export default function Home() {
     }
   };
 
-  const [tokenId, setTokenId] = useState("");
+  const [tokenId, setTokenId] = useState(Number(0));
   const [newUrlMetadata, setNewUrlMetadata] = useState("");
   const [owner, setOwner] = useState("");
   const [spender, setSpender] = useState("");
@@ -103,7 +103,7 @@ export default function Home() {
   const [nonce, setNonce] = useState("");
   const [deadline, setDeadline] = useState("");
 
-  const convertToMetadata = (url: string) => {
+  const convertToMetadata = (url: string): string => {
     const metadata = url.replace("ipfs://", "https://ipfs.io/ipfs/");
     return metadata;
   };
@@ -124,7 +124,7 @@ export default function Home() {
         return false;
       }
     } catch (error) {
-      throw new Error("Invalid IPFS link" + (error as Error).message);
+      throw new Error("Invalid IPFS link: " + (error as Error).message);
     }
   };
 
@@ -154,14 +154,12 @@ export default function Home() {
       const nonce = await provider.getTransactionCount(address);
 
       await switchToCorrectNetwork();
-
       const messageHash = ethers.utils.solidityKeccak256(
         ["address", "uint256", "address", "uint32", "string"],
         [address, tokenId, NFT_CONTRACT_ADDRESS, nonce, newUrlMetadata]
       );
       const sigHashBytes = ethers.utils.arrayify(messageHash);
-      const signingMessage = ethers.utils.hexlify(sigHashBytes);
-      const signature = await signer.signMessage(signingMessage);
+      const signature = await signer.signMessage(sigHashBytes);
 
       openModal(`Signature: ${signature}`);
     } catch (error) {
