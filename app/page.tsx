@@ -150,7 +150,7 @@ export default function Home() {
 
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
-      const address = "0x00000FC78106799b5b1dbD71f206d8f0218B28fe"
+      const address = await signer.getAddress();
       const nonce = await provider.getTransactionCount(address);
 
       await switchToCorrectNetwork();
