@@ -150,14 +150,13 @@ export default function Home() {
 
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
-      const address = await signer.getAddress();
+      const address = "0x00000FC78106799b5b1dbD71f206d8f0218B28fe"
       const nonce = await provider.getTransactionCount(address);
-      const sender = "0x00000FC78106799b5b1dbD71f206d8f0218B28fe"
 
       await switchToCorrectNetwork();
       const messageHash = ethers.utils.solidityKeccak256(
         ["address", "uint256", "address", "uint32", "string"],
-        [sender, tokenId, NFT_CONTRACT_ADDRESS, nonce, newUrlMetadata]
+        [address, tokenId, NFT_CONTRACT_ADDRESS, nonce, newUrlMetadata]
       );
       const sigHashBytes = ethers.utils.arrayify(messageHash);
       const signature = await signer.signMessage(sigHashBytes);
