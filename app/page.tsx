@@ -103,20 +103,13 @@ export default function Home() {
   const [nonce, setNonce] = useState("");
   const [deadline, setDeadline] = useState("");
 
-  const convertToMetadata = (url: string): string => {
-    const metadata = url.replace("ipfs://", "https://ipfs.io/ipfs/");
-    return metadata;
-  };
-
   const verifyIpfsLink = async (urlMetadata: string): Promise<boolean> => {
     try {
-      if (!urlMetadata.startsWith("ipfs://")) {
+      if (!urlMetadata.includes("ipfs")) {
         throw new Error("Invalid IPFS URL");
       }
 
-      const ipfsGatewayUrl = convertToMetadata(urlMetadata);
-
-      const response = await axios.get(ipfsGatewayUrl);
+      const response = await axios.get(urlMetadata);
 
       if (response.status === 200 && response.data) {
         return true;
