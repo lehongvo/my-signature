@@ -4,6 +4,7 @@ import { useEffect, useState, ReactNode } from "react";
 import { ethers } from "ethers";
 import Modal from "react-modal";
 import axios from "axios";
+import WbTokenAbi from "./ContractABI.json"
 
 // global.d.ts (assumed to be already created and correctly typed)
 
@@ -19,7 +20,9 @@ export default function Home() {
 
   const chainID = 10081;
   const RPC_URL = "https://rpc-1.testnet.japanopenchain.org:8545";
-  const NFT_CONTRACT_ADDRESS = "0x4950B69979942C235e5b576826Eedb77eaf6ff00";
+  const NFT_CONTRACT_ADDRESS = "0xeA31631d5C7a198090d09aE79f0E4ef0953F67c6";
+  const WB_CONTRACT_ADDRESS = "0x7Dd44ADc9fE2b7594F1d518d74D0E6C5D0B402dE";
+  const ADMIN_ADDRESS = "0x00000FC78106799b5b1dbD71f206d8f0218B28fe";
 
   // State to handle modal visibility and message
   const [modalIsOpen, setModalIsOpen] = useState(false);
@@ -97,11 +100,7 @@ export default function Home() {
 
   const [tokenId, setTokenId] = useState(Number(0));
   const [newUrlMetadata, setNewUrlMetadata] = useState("");
-  const [owner, setOwner] = useState("");
-  const [spender, setSpender] = useState("");
   const [value, setValue] = useState("");
-  const [nonce, setNonce] = useState("");
-  const [deadline, setDeadline] = useState("");
 
   const verifyIpfsLink = async (urlMetadata: string): Promise<boolean> => {
     try {
@@ -143,7 +142,7 @@ export default function Home() {
 
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
-      const address = "0x00000FC78106799b5b1dbD71f206d8f0218B28fe"
+      const address = ADMIN_ADDRESS;
       const nonce = await provider.getTransactionCount(address);
 
       await switchToCorrectNetwork();
@@ -169,8 +168,7 @@ export default function Home() {
       }
 
       if (
-        ethers.utils.isAddress(owner) === false ||
-        ethers.utils.isAddress(spender) === false
+        ethers.utils.isAddress(ADMIN_ADDRESS) === false
       ) {
         throw new Error("Invalid address!");
       }
@@ -178,32 +176,37 @@ export default function Home() {
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       const signer = provider.getSigner();
       const address = await signer.getAddress();
-      const nonce = await provider.getTransactionCount(address);
 
-      if (owner.toLowerCase() === spender.toLowerCase()) {
-        throw new Error("Owner and spender must be the same!");
+      const token = new ethers.Contract(WB_CONTRACT_ADDRESS, WbTokenAbi, signer);
+
+      const [nonce, name, version, chainId] = await Promise.all([
+        token.nonces(address),
+        token.name(),
+        "1",
+        signer.getChainId(),
+      ])
+      const domain = {
+        name,
+        version,
+        chainId,
+        verifyingContract: WB_CONTRACT_ADDRESS,
       }
 
-      const domain = {
-        name: "My Token",
-        version: "1",
-        chainId: chainID,
-        verifyingContract: NFT_CONTRACT_ADDRESS,
-      };
+      if (address.toLowerCase() === ADMIN_ADDRESS.toLowerCase()) {
+        throw new Error("Owner and spender must be the same!");
+      }
 
       const expTenDay: number =
         Math.floor(Date.now() / 1000) + 10 * 24 * 60 * 60;
 
-      if (Number(value) <= 0 || Number(nonce) < 0 || Number(deadline) < 0) {
-        throw new Error("Value, nonce, and deadline must be greater than 0");
-      }
+      const amountToEther = ethers.utils.parseEther(value.toString());
 
       const message = {
-        owner,
-        spender,
-        value: ethers.utils.parseUnits(value, 18),
+        owner: address,
+        spender: ADMIN_ADDRESS,
+        value: amountToEther,
         nonce: Number(nonce),
-        deadline: (Math.ceil(expTenDay) + Number(deadline)).toString(),
+        deadline: expTenDay
       };
 
       const types = {
@@ -215,19 +218,29 @@ export default function Home() {
           { name: "deadline", type: "uint256" },
         ],
       };
+      console.log("domain", domain);
+      console.log("message", message);
+      console.log("types", types);
 
       const signature = await signer._signTypedData(domain, types, message);
       const { v, r, s } = ethers.utils.splitSignature(signature);
 
       openModal(
         <>
+          From with value: {address}<br />
+          <br />
+          To with value: {ADMIN_ADDRESS}<br />
+          <br />
+          Amount with value: {value.toString()}<br />
+          <br />
+          Deadline with value: {expTenDay}<br />
+          <br />
           V with value: {v}<br />
           <br />
           R with value: {r}<br />
           <br />
           S with value: {s}<br />
           <br />
-          Signature with value: {signature}
         </>
       );
     } catch (error: unknown) {
@@ -240,7 +253,7 @@ export default function Home() {
     <div className="flex h-screen bg-gray-50 font-sans">
       {/* Left half for metadata update */}
       <div className="w-1/2 p-10 bg-white shadow-lg rounded-md flex flex-col justify-center items-center">
-        <h2 className="mb-6 text-4xl font-bold text-gray-800">Update Metadata</h2>
+        <h2 className="mb-6 text-4xl font-bold text-gray-800">Update Metadata(Sp Fe)</h2>
         <div className="mb-6 w-full">
           <label className="block mb-2 text-xl font-semibold text-gray-700">Token ID</label>
           <input
@@ -271,27 +284,8 @@ export default function Home() {
 
       {/* Right half for permit signature */}
       <div className="w-1/2 p-10 bg-white shadow-lg rounded-md flex flex-col justify-center items-center">
-        <h2 className="mb-6 text-4xl font-bold text-gray-800">Generate Permit Signature</h2>
-        <div className="mb-6 w-full">
-          <label className="block mb-2 text-xl font-semibold text-gray-700">Owner</label>
-          <input
-            type="text"
-            className="w-full p-4 text-lg border border-gray-300 rounded-md focus:border-blue-500 focus:ring focus:ring-blue-200 text-black placeholder-gray-700"
-            placeholder="Enter Owner Address"
-            value={owner}
-            onChange={(e) => setOwner(e.target.value)}
-          />
-        </div>
-        <div className="mb-6 w-full">
-          <label className="block mb-2 text-xl font-semibold text-gray-700">Spender</label>
-          <input
-            type="text"
-            className="w-full p-4 text-lg border border-gray-300 rounded-md focus:border-blue-500 focus:ring focus:ring-blue-200 text-black placeholder-gray-700"
-            placeholder="Enter Spender Address"
-            value={spender}
-            onChange={(e) => setSpender(e.target.value)}
-          />
-        </div>
+        <h2 className="mb-6 text-4xl font-bold text-gray-800">Generate Permit Signature(Sp Fee)</h2>
+
         <div className="mb-6 w-full">
           <label className="block mb-2 text-xl font-semibold text-gray-700">Value</label>
           <input
@@ -300,26 +294,6 @@ export default function Home() {
             placeholder="Enter Value"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-          />
-        </div>
-        <div className="mb-6 w-full">
-          <label className="block mb-2 text-xl font-semibold text-gray-700">Nonce</label>
-          <input
-            type="text"
-            className="w-full p-4 text-lg border border-gray-300 rounded-md focus:border-blue-500 focus:ring focus:ring-blue-200 text-black placeholder-gray-700"
-            placeholder="Enter Nonce"
-            value={nonce}
-            onChange={(e) => setNonce(e.target.value)}
-          />
-        </div>
-        <div className="mb-6 w-full">
-          <label className="block mb-2 text-xl font-semibold text-gray-700">Deadline</label>
-          <input
-            type="text"
-            className="w-full p-4 text-lg border border-gray-300 rounded-md focus:border-blue-500 focus:ring focus:ring-blue-200 text-black placeholder-gray-700"
-            placeholder="Enter Deadline"
-            value={deadline}
-            onChange={(e) => setDeadline(e.target.value)}
           />
         </div>
         <button
