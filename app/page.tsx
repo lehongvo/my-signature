@@ -70,17 +70,13 @@ export default function Page() {
     try {
       // Establish connection with Ronin Wallet
       const connector = await requestRoninWalletConnector();
-      const connectResult = await connector.connect();
-
-      await connector.switchChain(ChainIds.RoninTestnet);
-
+      await connector.connect();
 
       // Use Ronin Testnet (Saigon Testnet) RPC URL
       const saigonRpcUrl = 'https://saigon-testnet.roninchain.com/rpc';
 
 
       const provider = new ethers.providers.JsonRpcProvider(saigonRpcUrl);
-      await switchToTestnet(provider);
 
       // Ensure the signer is linked with the wallet's address
       const accounts = await connector.getAccounts();
@@ -137,19 +133,7 @@ export default function Page() {
         params: [tx],
       });
 
-      // await provider.request({
-      //   method: "eth_sendTransaction",
-      //   params: [{
-      //     to: "0xaddress",
-      //     from: userAddresses[0],
-      //     value: "0xDE0B6B3A7640000", // 1000000000000000000, 1 RON
-      //     gas: "0x5208",
-      //     data: "",
-      //     }],
-      //   })
-
       console.log('Transaction Hash:', txHash);
-
     } catch (error) {
       console.error('Detailed error:', error);
       setFeedbackType('error');
