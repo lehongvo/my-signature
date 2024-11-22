@@ -1,328 +1,280 @@
-"use client";
+'use client';
 
-import { useEffect, useState, ReactNode } from "react";
-import { ethers } from "ethers";
-import Modal from "react-modal";
-import axios from "axios";
-import WbTokenAbi from "./ContractABI.json"
+import { useState, ChangeEvent, FormEvent } from 'react';
+import {
+  requestRoninWalletConnector,
+} from '@sky-mavis/tanto-connect';
+import { ethers } from 'ethers';
 
-// global.d.ts (assumed to be already created and correctly typed)
+interface TokenInfo {
+  name: string;
+  symbol: string;
+  initAmountIn: string;
+  description: string;
+  extended: string;
+  tokenUrlImage: string;
+}
 
-export default function Home() {
-  useEffect(() => {
-    const appElement = document.getElementById("__next");
-    if (appElement) {
-      Modal.setAppElement(appElement);
-    } else {
-      console.warn("No element found with ID '__next'");
-    }
-  }, []);
+const mainContractAddress = '0xf67d83b10231001d08dd0f40fa7bea53834956d3';
+const mainContractAbi = [
+  {
+    inputs: [
+      { internalType: 'string', name: 'name', type: 'string' },
+      { internalType: 'string', name: 'symbol', type: 'string' },
+      { internalType: 'uint256', name: 'initAmountIn', type: 'uint256' },
+      { internalType: 'string', name: 'description', type: 'string' },
+      { internalType: 'string', name: 'extended', type: 'string' },
+      { internalType: 'string', name: 'tokenUrlImage', type: 'string' },
+    ],
+    name: 'createNewToken',
+    outputs: [
+      { internalType: 'contract MokuToken', name: 'token', type: 'address' },
+      { internalType: 'uint256', name: 'amountOut', type: 'uint256' },
+    ],
+    stateMutability: 'payable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'creationFee_',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+];
 
-  const chainID = 10081;
-  const RPC_URL = "https://rpc-1.testnet.japanopenchain.org:8545";
-  const NFT_CONTRACT_ADDRESS = "0xeA31631d5C7a198090d09aE79f0E4ef0953F67c6";
-  const WB_CONTRACT_ADDRESS = "0x7Dd44ADc9fE2b7594F1d518d74D0E6C5D0B402dE";
-  const ADMIN_ADDRESS = "0x00000FC78106799b5b1dbD71f206d8f0218B28fe";
+export default function Page() {
+  const [tokenInfo, setTokenInfo] = useState<TokenInfo>({
+    name: '',
+    symbol: '',
+    initAmountIn: '',
+    description: '',
+    extended: '',
+    tokenUrlImage: '',
+  });
 
-  // State to handle modal visibility and message
-  const [modalIsOpen, setModalIsOpen] = useState(false);
-  const [modalMessage, setModalMessage] = useState<ReactNode>(null);
-  const [modalMessageText, setModalMessageText] = useState<ReactNode>("Update Metadata With Signature");
+  const [feedback, setFeedback] = useState<string>('');
+  const [feedbackType, setFeedbackType] = useState<'error' | 'success'>('error');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const openModal = (message: ReactNode) => {
-    setModalMessage(message);
-    setModalIsOpen(true);
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target;
+    setTokenInfo((prev) => ({ ...prev, [id]: value }));
   };
 
-  const closeModal = () => {
-    setModalIsOpen(false);
-  };
+  const createToken = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setFeedback('');
 
-  const switchToCorrectNetwork = async (): Promise<void> => {
-    if (typeof window.ethereum === "undefined") {
-      throw new Error("MetaMask is not installed!");
-    }
-
-    if (window.ethereum) {
-      await window.ethereum.request?.({ method: "eth_requestAccounts" });
-    }
-
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const networkData = await provider.getNetwork();
-    const chainIDHex = ethers.utils.hexValue(chainID);
-
-    if (Number(networkData.chainId) !== Number(chainIDHex)) {
-      if (typeof window !== "undefined" && window.ethereum) {
-        try {
-          await window.ethereum.request?.({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: chainIDHex }],
-          });
-        } catch (switchError: unknown) {
-          if (
-            typeof switchError === "object" &&
-            switchError !== null &&
-            "code" in switchError &&
-            (switchError).code === 4902
-          ) {
-            try {
-              await window.ethereum.request?.({
-                method: "wallet_addEthereumChain",
-                params: [
-                  {
-                    chainId: chainIDHex,
-                    chainName: "Japan Open Chain Testnet",
-                    rpcUrls: [RPC_URL],
-                    nativeCurrency: {
-                      name: "JOY",
-                      symbol: "JOY",
-                      decimals: 18,
-                    },
-                    blockExplorerUrls: [
-                      "https://explorer.testnet.japanopenchain.org/",
-                    ],
-                  },
-                ],
-              });
-            } catch (addError: unknown) {
-              console.error("Failed to add network:", addError);
-              openModal(`Failed to add network: ${addError}`);
-            }
-          } else {
-            openModal(`Failed to switch network: ${switchError}`);
-          }
-        }
-      } else {
-        openModal("MetaMask is not installed. Please install MetaMask to continue.");
-      }
-    }
-  };
-
-  const [tokenId, setTokenId] = useState(Number(0));
-  const [newUrlMetadata, setNewUrlMetadata] = useState("");
-  const [value, setValue] = useState("");
-
-  const verifyIpfsLink = async (urlMetadata: string): Promise<boolean> => {
     try {
-      if (!urlMetadata.includes("ipfs")) {
-        throw new Error("Invalid IPFS URL");
+      // Establish connection with Ronin Wallet
+      const connector = await requestRoninWalletConnector();
+      const connectResult = await connector.connect();
+
+      await connector.switchChain(ChainIds.RoninTestnet);
+
+
+      // Use Ronin Testnet (Saigon Testnet) RPC URL
+      const saigonRpcUrl = 'https://saigon-testnet.roninchain.com/rpc';
+
+
+      const provider = new ethers.providers.JsonRpcProvider(saigonRpcUrl);
+      await switchToTestnet(provider);
+
+      // Ensure the signer is linked with the wallet's address
+      const accounts = await connector.getAccounts();
+      console.log('Accounts:', accounts);
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts found in Ronin Wallet');
       }
 
-      const response = await axios.get(urlMetadata);
+      // Connect signer to the provider
+      const signer = provider.getSigner(accounts[0]);
 
-      if (response.status === 200 && response.data) {
-        return true;
-      } else {
-        return false;
-      }
-    } catch (error) {
-      throw new Error("Invalid IPFS link: " + (error as Error).message);
-    }
-  };
+      const mainContract = new ethers.Contract(mainContractAddress, mainContractAbi, signer);
 
-  const handleUpdateSignature = async (): Promise<void> => {
-    try {
-      setModalMessageText("Update Metadata With Signature");
-      if (typeof window.ethereum === "undefined") {
-        throw new Error("MetaMask is not installed!");
-      }
+      const creationFee = await mainContract.creationFee_();
+      console.log('Creation Fee:', ethers.utils.formatEther(creationFee));
 
-      const isValidIpfsLink = await verifyIpfsLink(newUrlMetadata);
-      if (!isValidIpfsLink) {
-        throw new Error("Invalid IPFS link or metadata");
-      }
 
-      if (Number(tokenId) <= 0) {
-        throw new Error("Token ID must be greater than 0");
-      }
+      const totalValue = Number(creationFee) + Number(ethers.utils.parseEther(tokenInfo.initAmountIn));
+      const realTotalValue = (totalValue.toString());
+      console.log('Total Value:', +realTotalValue);
 
-      if (window.ethereum) {
-        await window.ethereum.request?.({ method: "eth_requestAccounts" });
-      }
-
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-      const address = ADMIN_ADDRESS;
-      const nonce = await provider.getTransactionCount(address);
-
-      await switchToCorrectNetwork();
-      const messageHash = ethers.utils.solidityKeccak256(
-        ["address", "uint256", "address", "uint32", "string"],
-        [address, tokenId, NFT_CONTRACT_ADDRESS, nonce, newUrlMetadata]
+      const gasEstimate = await mainContract.estimateGas.createNewToken(
+        tokenInfo.name,
+        tokenInfo.symbol,
+        ethers.utils.parseEther(tokenInfo.initAmountIn),
+        tokenInfo.description,
+        tokenInfo.extended,
+        tokenInfo.tokenUrlImage,
+        { value: totalValue }
       );
-      const sigHashBytes = ethers.utils.arrayify(messageHash);
-      const signature = await signer.signMessage(sigHashBytes);
+      console.log("gasEstimate", +gasEstimate);
 
-      openModal(`Signature: ${signature}`);
-    } catch (error) {
-      console.error("Error updating metadata:", error);
-      openModal(`Error updating metadata: ${(error as Error).message}`);
-    }
-  };
-
-  const handlePermitSubmit = async (): Promise<void> => {
-    try {
-      setModalMessageText("Permit With Signature");
-      if (typeof window.ethereum === "undefined") {
-        throw new Error("MetaMask is not installed!");
-      }
-
-      if (
-        ethers.utils.isAddress(ADMIN_ADDRESS) === false
-      ) {
-        throw new Error("Invalid address!");
-      }
-
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
-      const address = await signer.getAddress();
-
-      const token = new ethers.Contract(WB_CONTRACT_ADDRESS, WbTokenAbi, signer);
-
-      const [nonce, name, version, chainId] = await Promise.all([
-        token.nonces(address),
-        token.name(),
-        "1",
-        signer.getChainId(),
-      ])
-      const domain = {
-        name,
-        version,
-        chainId,
-        verifyingContract: WB_CONTRACT_ADDRESS,
-      }
-
-      if (address.toLowerCase() === ADMIN_ADDRESS.toLowerCase()) {
-        throw new Error("Owner and spender must be the same!");
-      }
-
-      const expTenDay: number =
-        Math.floor(Date.now() / 1000) + 10 * 24 * 60 * 60;
-
-      const amountToEther = ethers.utils.parseEther(value.toString());
-
-      const message = {
-        owner: address,
-        spender: ADMIN_ADDRESS,
-        value: amountToEther,
-        nonce: Number(nonce),
-        deadline: expTenDay
+      const tx = {
+        to: mainContractAddress,
+        value: totalValue,
+        from: accounts[0],
+        gasLimit: gasEstimate.mul(102).div(100),
+        gas: ethers.utils.hexlify(Math.ceil(gasEstimate.toNumber() * 1.02)),
+        data: mainContract.interface.encodeFunctionData('createNewToken', [
+          tokenInfo.name,
+          tokenInfo.symbol,
+          ethers.utils.parseEther(tokenInfo.initAmountIn),
+          tokenInfo.description,
+          tokenInfo.extended,
+          tokenInfo.tokenUrlImage,
+        ]),
       };
 
-      const types = {
-        Permit: [
-          { name: "owner", type: "address" },
-          { name: "spender", type: "address" },
-          { name: "value", type: "uint256" },
-          { name: "nonce", type: "uint256" },
-          { name: "deadline", type: "uint256" },
-        ],
-      };
-      console.log("domain", domain);
-      console.log("message", message);
-      console.log("types", types);
 
-      const signature = await signer._signTypedData(domain, types, message);
-      const { v, r, s } = ethers.utils.splitSignature(signature);
+      // Send the signed transaction using eth_sendRawTransaction
+      const network = await connector.getProvider()
+      const txHash = await network.request({
+        method: 'eth_sendTransaction',
+        params: [tx],
+      });
 
-      openModal(
-        <>
-          From with value: {address}<br />
-          <br />
-          To with value: {ADMIN_ADDRESS}<br />
-          <br />
-          Amount with value: {value.toString()}<br />
-          <br />
-          Deadline with value: {expTenDay}<br />
-          <br />
-          V with value: {v}<br />
-          <br />
-          R with value: {r}<br />
-          <br />
-          S with value: {s}<br />
-          <br />
-        </>
-      );
-    } catch (error: unknown) {
-      console.error("Error generating permit signature:", error);
-      openModal(`Error generating permit signature: ${error}`);
+      // await provider.request({
+      //   method: "eth_sendTransaction",
+      //   params: [{
+      //     to: "0xaddress",
+      //     from: userAddresses[0],
+      //     value: "0xDE0B6B3A7640000", // 1000000000000000000, 1 RON
+      //     gas: "0x5208",
+      //     data: "",
+      //     }],
+      //   })
+
+      console.log('Transaction Hash:', txHash);
+
+    } catch (error) {
+      console.error('Detailed error:', error);
+      setFeedbackType('error');
+      setFeedback(error instanceof Error ? error.message : 'An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
     }
   };
+
 
   return (
-    <div className="flex h-screen bg-gray-50 font-sans">
-      {/* Left half for metadata update */}
-      <div className="w-1/2 p-10 bg-white shadow-lg rounded-md flex flex-col justify-center items-center">
-        <h2 className="mb-6 text-4xl font-bold text-gray-800">Update Metadata(Sp Fe)</h2>
-        <div className="mb-6 w-full">
-          <label className="block mb-2 text-xl font-semibold text-gray-700">Token ID</label>
-          <input
-            type="text"
-            className="w-full p-4 text-lg border border-gray-300 rounded-md focus:border-blue-500 focus:ring focus:ring-blue-200 text-black placeholder-gray-700"
-            placeholder="Enter Token ID"
-            value={tokenId}
-            onChange={(e) => setTokenId(Number(e.target.value))}
-          />
-        </div>
-        <div className="mb-6 w-full">
-          <label className="block mb-2 text-xl font-semibold text-gray-700">New URL Metadata</label>
-          <input
-            type="text"
-            className="w-full p-4 text-lg border border-gray-300 rounded-md focus:border-blue-500 focus:ring focus:ring-blue-200 text-black placeholder-gray-700"
-            placeholder="Enter New URL Metadata"
-            value={newUrlMetadata}
-            onChange={(e) => setNewUrlMetadata(e.target.value)}
-          />
-        </div>
-        <button
-          className="w-full py-4 mt-4 text-lg text-white bg-blue-600 rounded-md hover:bg-blue-700 font-bold shadow-lg transition-all"
-          onClick={handleUpdateSignature}
-        >
-          Get Signature Update Metadata
-        </button>
+    <div className="min-h-screen bg-zinc-950 text-white flex justify-center items-center">
+      <div className="bg-white text-black p-6 rounded shadow-md w-full max-w-lg">
+        <h2 className="text-2xl font-bold mb-4 text-center">Create Token with Ronin Wallet</h2>
+        <form onSubmit={createToken} className="space-y-4">
+          <div>
+            <label htmlFor="name" className="block font-semibold mb-1">
+              Token Name
+            </label>
+            <input
+              type="text"
+              id="name"
+              className="w-full p-2 border rounded"
+              placeholder="Enter token name"
+              value={tokenInfo.name}
+              onChange={handleInputChange}
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="symbol" className="block font-semibold mb-1">
+              Token Symbol
+            </label>
+            <input
+              type="text"
+              id="symbol"
+              className="w-full p-2 border rounded"
+              placeholder="Enter token symbol"
+              value={tokenInfo.symbol}
+              onChange={handleInputChange}
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="initAmountIn" className="block font-semibold mb-1">
+              Initial Amount (RON)
+            </label>
+            <input
+              type="number"
+              id="initAmountIn"
+              step="0.000000000000000001"
+              className="w-full p-2 border rounded"
+              placeholder="Enter initial amount"
+              value={tokenInfo.initAmountIn}
+              onChange={handleInputChange}
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="description" className="block font-semibold mb-1">
+              Description
+            </label>
+            <textarea
+              id="description"
+              className="w-full p-2 border rounded"
+              rows={3}
+              placeholder="Enter description"
+              value={tokenInfo.description}
+              onChange={handleInputChange}
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="extended" className="block font-semibold mb-1">
+              Extended Info
+            </label>
+            <textarea
+              id="extended"
+              className="w-full p-2 border rounded"
+              rows={3}
+              placeholder="Enter extended info"
+              value={tokenInfo.extended}
+              onChange={handleInputChange}
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="tokenUrlImage" className="block font-semibold mb-1">
+              Token URL Image
+            </label>
+            <input
+              type="url"
+              id="tokenUrlImage"
+              className="w-full p-2 border rounded"
+              placeholder="Enter token image URL"
+              value={tokenInfo.tokenUrlImage}
+              onChange={handleInputChange}
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className={`w-full py-2 rounded text-white ${isLoading
+              ? 'bg-gray-500 cursor-not-allowed'
+              : 'bg-blue-500 hover:bg-blue-700'
+              }`}
+          >
+            {isLoading ? 'Creating Token...' : 'Create Token'}
+          </button>
+        </form>
+
+        {feedback && (
+          <p className={`mt-4 text-center ${feedbackType === 'error' ? 'text-red-500' : 'text-green-500'
+            }`}>
+            {feedback}
+          </p>
+        )}
       </div>
-
-      {/* Right half for permit signature */}
-      <div className="w-1/2 p-10 bg-white shadow-lg rounded-md flex flex-col justify-center items-center">
-        <h2 className="mb-6 text-4xl font-bold text-gray-800">Generate Permit Signature(Sp Fee)</h2>
-
-        <div className="mb-6 w-full">
-          <label className="block mb-2 text-xl font-semibold text-gray-700">Value</label>
-          <input
-            type="text"
-            className="w-full p-4 text-lg border border-gray-300 rounded-md focus:border-blue-500 focus:ring focus:ring-blue-200 text-black placeholder-gray-700"
-            placeholder="Enter Value"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-          />
-        </div>
-        <button
-          className="w-full py-4 mt-4 text-lg text-white bg-blue-600 rounded-md hover:bg-blue-700 font-bold shadow-lg transition-all"
-          onClick={handlePermitSubmit}
-        >
-          Get Permit Signature
-        </button>
-      </div>
-
-      {/* Modal for displaying messages */}
-      <Modal
-        isOpen={modalIsOpen}
-        onRequestClose={closeModal}
-        contentLabel="Styled Modal"
-        className="p-20 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-xl shadow-2xl w-full max-w-3xl mx-auto flex flex-col justify-center items-center"
-        overlayClassName="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center"
-      >
-        <h2 className="text-5xl font-extrabold mb-4 text-white">🌟 {modalMessageText}</h2>
-        <p className="mb-8 text-3xl text-white text-left break-words w-full overflow-x-auto">
-          {modalMessage}
-        </p>
-        <button
-          className="px-10 py-5 text-3xl text-white bg-blue-600 hover:bg-blue-700 rounded-full transition-transform transform hover:scale-105 font-bold shadow-lg"
-          onClick={closeModal}
-        >
-          Close
-        </button>
-      </Modal>
     </div>
   );
 }
