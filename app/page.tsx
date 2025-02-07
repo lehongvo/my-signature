@@ -10,7 +10,9 @@ import WbTokenAbi from "./ContractABI.json"
 
 export default function Home() {
   useEffect(() => {
-    Modal.setAppElement(document.body);
+    if (typeof window !== 'undefined') {
+      Modal.setAppElement(document.body);
+    }
   }, []);
 
   const chainID = 10081;
@@ -163,7 +165,7 @@ export default function Home() {
       }
 
       if (window.ethereum) {
-        await window.ethereum.request({
+        await window.ethereum.request?.({
           method: "eth_requestAccounts"
         });
       }
@@ -313,7 +315,7 @@ export default function Home() {
         isOpen={modalIsOpen}
         onRequestClose={closeModal}
         contentLabel="Styled Modal"
-        appElement={document.body}
+        appElement={typeof window !== 'undefined' ? document.body : undefined}
         className="p-20 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-xl shadow-2xl w-full max-w-3xl mx-auto flex flex-col justify-center items-center"
         overlayClassName="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center"
       >
